@@ -1,0 +1,24 @@
+{
+  "title": "mtux pack",
+  "id": "mtux-pack",
+  "stickers": [
+    {
+      "body": "Mtux Logo",
+      "url": "mxc://mtux.nl/fSmTyhQsRJwQSaIaqznfqKXR",
+      "info": {
+        "w": 256,
+        "h": 256,
+        "size": 0,
+        "mimetype": "image/png",
+        "thumbnail_url": "mxc://mtux.nl/fSmTyhQsRJwQSaIaqznfqKXR",
+        "thumbnail_info": {
+          "w": 256,
+          "h": 256,
+          "size": 0,
+          "mimetype": "image/png"
+        }
+      },
+      "id": "mtux-logo-001"
+    }
+  ]
+}
