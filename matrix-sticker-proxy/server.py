@@ -14,7 +14,7 @@ def load_config():
             return yaml.safe_load(f)
     except Exception as e:
         print(f"Kan config.yaml niet laden: {e}")
-        sys.exit(1)
+        return {}
 
 cfg = load_config()
 
@@ -32,7 +32,7 @@ def fix_base64_padding(data):
 async def fetch_and_stream(url, request):
     try:
         async with aiohttp.ClientSession() as session:
-            headers = {"User-Agent": "Mozilla/5.0"}
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
             async with session.get(url, headers=headers) as resp:
                 if resp.status != 200:
                     logger.error(f"Externe server gaf foutmelding {resp.status} voor {url}")
@@ -57,18 +57,25 @@ async def fetch_and_stream(url, request):
 async def handle_media_request(request):
     media_id = request.match_info.get('media_id', '')
     
+    decoded_url = ""
+    prefix = ""
+
     if media_id.startswith("klipy_"):
-        decoded_url = ""
+        prefix = "klipy_"
+    elif media_id.startswith("url_"):
+        prefix = "url_"
+    
+    if prefix:
         try:
-            encoded_part = media_id[6:]
+            encoded_part = media_id[len(prefix):]
             encoded_part = fix_base64_padding(encoded_part)
             url_bytes = base64.urlsafe_b64decode(encoded_part)
             decoded_url = url_bytes.decode('utf-8')
         except Exception as e:
-            logger.error(f"Fout bij decoden Klipy ID: {e}")
+            logger.error(f"Fout bij decoden ID: {e}")
             return web.Response(text="Invalid Media ID Syntax", status=400)
             
-        logger.info(f"Proxying Klipy: {decoded_url}")
+        logger.info(f"Proxying [{prefix}]: {decoded_url}")
         return await fetch_and_stream(decoded_url, request)
 
     logger.warning(f"Onbekend media request: {media_id}")
@@ -105,5 +112,5 @@ routes = [
 app.add_routes(routes)
 
 if __name__ == '__main__':
-    logger.info(f"Starting Python Matrix Proxy (Stream Mode) on {HOST}:{PORT}")
+    logger.info(f"Starting Matrix Media Proxy on {HOST}:{PORT}")
     web.run_app(app, host=HOST, port=PORT)
