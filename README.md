@@ -1,140 +1,101 @@
-# Matrix Sticker Picker (Mtux)
+# Matrix/Element Sticker Picker
 
-Een lichtgewicht, aangepaste sticker picker widget voor Matrix clients (zoals Element). Deze picker ondersteunt eigen statische sticker packs en integreert met de Klipy API voor GIFs, memes en stickers. Het bevat een Python-gebaseerde media proxy om externe content te serveren die compatibel is met Matrix media standaarden.
+Dit is een nieuwe, snelle sticker picker integratie voor Matrix en Element (Web/Desktop). Het stelt gebruikers in staat om eenvoudig Gifs, Memes en Stickers (via Klipy) te zoeken en te versturen in hun chats.
 
-## Kenmerken
+## Project Structuur
 
-* **Eigen Sticker Packs:** Ondersteunt statische JSON-gebaseerde sticker packs (standaard: `mtux.json`).
-* **Klipy Integratie:** Zoek en verstuur GIFs, Memes en Stickers via de Klipy API.
-* **Favorieten:** Sla je favoriete stickers lokaal op voor snelle toegang.
-* **Media Proxy:** Bevat een Python `aiohttp` backend die externe afbeeldingen proxyt zodat ze verschijnen als geldige Matrix media (`mxc://`).
-* **Thema Ondersteuning:** Detecteert automatisch de Donkere/Lichte modus van de Matrix client of systeeminstellingen.
-* **Responsive:** Geoptimaliseerd voor gebruik als widget op zowel desktop als mobiel.
+Het project bestaat uit twee hoofdonderdelen:
 
-## Architectuur
+1. **Frontend (index.html + assets/)**: De gebruikersinterface. Dit zijn statische bestanden die op een webserver (of subdomein) geserveerd moeten worden.
+2. **Backend (matrix-sticker-proxy/)**: Een Python server die fungeert als proxy tussen de widget en de Matrix server.
 
-De sticker picker bestaat uit twee componenten:
+## Installatie & Configuratie
 
-1. **Frontend (Nginx):** Serveert de HTML/JS/CSS en assets op een publiek domein (bijv. `stickers.example.com`)
-2. **Backend (Docker):** Python media proxy server die externe content proxyt naar Matrix-compatibel formaat
+### 1. Backend (Matrix Sticker Proxy)
 
-## Frontend Setup (Nginx)
+De backend code bevindt zich in de map matrix-sticker-proxy. Deze moet draaien op een plek waar je Matrix server (Synapse/Dendrite) bij kan.
 
-### 1. Installeer Bestanden
+**Vereisten:**
 
-Plaats de frontend bestanden in je webserver directory:
+* Python 3 of Docker
+* Pas de configuratie aan in matrix-sticker-proxy/config.yaml. Hier moet je de **signingkey** instellen.
 
-### 2. Nginx Configuratie
+**Draaien met Docker (aanbevolen):**
 
-```nginx
-server {
-    listen 443 ssl http2;
-    server_name stickers.example.com;
+```
+cd matrix-sticker-proxy  docker build -t sticker-proxy .  docker run -p 8008:8008 sticker-proxy 
+```
 
-    ssl_certificate /path/to/cert.pem;
-    ssl_certificate_key /path/to/key.pem;
+### 2. Frontend (Static Files)
 
-    root /var/www/matrix-sticker-picker;
-    index index.html;
+De frontend bestanden (index.html en de map assets) moeten publiekelijk toegankelijk zijn via een webserver.
 
-    # Serveer frontend bestanden
-    location / {
-        try_files $uri $uri/ =404;
+**Configuratie:**
+
+* Open assets/js/index.js en voeg je **Klipy API key** toe.
+
+### 3. Server Configuratie (Nginx)
+
+Om de picker correct te laten werken met Matrix, moet de webserver ook reageren als een (nep) Matrix server via de .well-known route.
+
+Hier is een voorbeeld Nginx configuratieblok. Dit serveert de frontend op /stickers, proxyt de backend requests, en handelt de server discovery af.
+
+```
+    location /_matrix {
+        proxy_pass http://proxy-ip:port;
     }
 
-    # Matrix server discovery
-    location /.well-known/matrix/server {
-        default_type application/json;
+    location = /.well-known/matrix/server {
         add_header Access-Control-Allow-Origin *;
+        add_header Content-Type application/json;
+        add_header Cache-Control "no-cache";
         return 200 '{"m.server":"assets.mtux.nl:443"}';
     }
-}
 ```
 
-**Belangrijk:** Vervang `assets.mtux.nl:443` met je eigen media proxy server domein.
+> **Let op:** De .well-known configuratie is essentieel. Hiermee bootsen we een Matrix homeserver na, wat vereist is voor de integratie widget.
 
-## Backend Setup (Docker)
+## Integratie in Element
 
-De media proxy server draait in Docker en handelt alle `/_matrix/media/...` requests af.
+Om de sticker picker te activeren in je Element client, moet je de account data aanpassen via de developer tools.
 
-### 1. Bouw de Image
+1. Open Element en typ /devtools in een chat.
+2. Klik op de knop **Explore account data** (Let op: kies de globale account data, niet "room account data").
+3. Zoek naar m.widgets. Als deze niet bestaat, maak deze dan aan.
+4. Bewerk het m.widgets event en plak de volgende JSON inhoud (pas de URL en User ID aan):
 
-```bash
-docker build -t matrix-sticker-picker .
 ```
-
-### 2. Configuratie
-
-Maak een `config.yaml` bestand aan in je data-map:
-
-```yaml
-server_name: assets.mtux.nl
-hostname: 0.0.0.0
-port: 8008
-signing_key: "JouwGeheimeSleutelHier"
-```
-
-### 3. Start de Container
-
-De container verwacht een volume gekoppeld aan `/data` met daarin je `config.yaml`:
-
-```bash
-docker run -d \
-  -p 8008:8008 \
-  -v $(pwd)/data:/data \
-  --name sticker-picker \
-  matrix-sticker-picker
-```
-
-**Opmerking:** De Dockerfile gebruikt `python:3.11-slim` en stelt de werkmap in op `/data`. Zorg ervoor dat je config aanwezig is in het gekoppelde volume.
-
-### 4. Reverse Proxy (Nginx)
-
-Configureer een reverse proxy voor de media server:
-
-```nginx
-server {
-    listen 443 ssl http2;
-    server_name assets.mtux.nl;
-
-    ssl_certificate /path/to/cert.pem;
-    ssl_certificate_key /path/to/key.pem;
-
-    location / {
-        proxy_pass http://localhost:8008;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+{
+  "type": "m.widgets",
+  "content": {
+    "stickerpicker": {
+      "content": {
+        "type": "m.stickerpicker",
+        "url": "https://example.sticker.picker.url/?theme=$theme",
+        "name": "Stickerpicker",
+        "creatorUserId": "@jouw_naam:matrix.server.naam",
+        "data": {}
+      },
+      "sender": "@jouw_naam:matrix.server.naam",
+      "state_key": "stickerpicker",
+      "type": "m.widget",
+      "id": "stickerpicker"
     }
+  }
 }
 ```
 
-## Handmatige Installatie (Backend)
+* **URL:** Vervang https://example.sticker.picker.url/ door jouw eigen domein als je zelf host.
+* **Theme:** De parameter ?theme=$theme zorgt ervoor dat de picker automatisch het lichte of donkere thema van Element overneemt. Je kunt dit ook forceren door light of dark in te vullen.
 
-Als je het liever zonder Docker draait:
+### Demo
 
-### 1. Installeer Benodigdheden
+Wil je de picker uitproberen zonder zelf te hosten? Gebruik dan de volgende URL in bovenstaande configuratie:
 
-```bash
-pip install -r requirements.txt
-```
-
-(Vereist `aiohttp` en `PyYAML`).
-
-### 2. Start de Server
-
-```bash
-python server.py
-```
-
-## Configuratie Opmerkingen
-
-* **API Keys:** De Klipy API-sleutel is geconfigureerd in `index.js`.
-* **Proxying:** De server handelt `klipy_` geprefixte ID's af door de base64 URL te decoderen en de content naar de client te streamen.
-* **Server Discovery:** De `/.well-known/matrix/server` endpoint wijst Matrix clients naar de media proxy server.
-* **CORS:** Zorg dat CORS headers correct zijn ingesteld voor cross-origin requests van Element clients.
+https://assets.mtux.nl/stickers/
 
 ## Licentie
 
-Dit project valt onder de AGPL-3.0 licentie.
+Dit project is gelicenseerd onder de **GNU Affero General Public License v3.0** (AGPL-3.0). Zie het bestand LICENSE.txt voor meer informatie.
+
+**Veel plezier met de nieuwe sticker ervaring!**
